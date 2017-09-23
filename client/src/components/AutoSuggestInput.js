@@ -1,30 +1,47 @@
-import React, { Component } from 'react';
-import PropTypes from 'prop-types';
-import { connect } from 'react-redux';
-import PlacesAutocomplete, { geocodeByAddress, getLatLng } from 'react-places-autocomplete';
-import scriptLoader from 'react-async-script-loader';
+import React, { Component } from "react";
+import PropTypes from "prop-types";
+// import { connect } from 'react-redux';
+import PlacesAutocomplete, {
+  geocodeByAddress,
+  getLatLng
+} from "react-places-autocomplete";
+import scriptLoader from "react-async-script-loader";
 
-import {
-  searchAddressFlow,
-  clearSearchResults
-} from '../redux/actions/initialSearch';
+// import {
+//   searchAddressFlow,
+//   clearSearchResults
+// } from '../redux/actions/initialSearch';
 
 class AutoSuggestInput extends Component {
   constructor(props) {
     super(props);
     this.state = {
-      address: '',
-      isFieldActive: false,
-      error: ''
+      address: "",
+      error: "",
+      geocodeResults: null,
+      latLng: null
     };
-    this.onChange = address => this.setState({ address, error: '' });
+    this.handleChange = this.handleChange.bind(this);
+    this.handleSelect = this.handleSelect.bind(this);
+  }
+
+  handleChange(address) {
+    this.setState({
+      address,
+      geocodeResults: null
+    });
   }
 
   handleSelect(address) {
     this.setState({ address });
     geocodeByAddress(address)
-      .then((results) => {
-        this.props.searchAddressFlow(results[0], getLatLng);
+      .then(results => {
+        this.setState({ geocodeResults: results });
+        getLatLng(results[0])
+          .then(({ lat, lng }) => {
+            this.setState({ latLng: { lat, lng } });
+          })
+          .catch(error => this.setState({ error }));
       })
       .catch(error => this.setState({ error }));
   }
@@ -36,46 +53,80 @@ class AutoSuggestInput extends Component {
     this.addressInput.focus();
   }
 
+  // clearInput(e) {
+  //   e.preventDefault();
+  //   this.setState({ address: "", error: "" });
+  //   this.props.clearSearchResults();
+  //   this.addressInput.focus();
+  // }
   clearInput(e) {
     e.preventDefault();
-    this.setState({ address: '', error: '' });
-    this.props.clearSearchResults();
+    this.setState({ address: "", error: "" });
     this.addressInput.focus();
   }
 
   render() {
+    let errorMessage = "";
     const cssClasses = {
-      root: 'form_group',
-      input: 'search_input',
-      autocompleteContainer: 'autocomplete_container',
-      autocompleteItemActive: 'input_suggestion_item_active'
+      root: "form_group",
+      input: "search_input",
+      autocompleteContainer: "autocomplete_container",
+      autocompleteItemActive: "input_suggestion_item_active"
     };
 
     const AutocompleteItem = ({ formattedSuggestion }) => (
       <div className="input_suggestion_item">
         <i className="fa fa-map-marker" />
-        <strong className="suggestion_text_bold">{formattedSuggestion.mainText}</strong>{' '}
-        <small className="suggestion_text_muted">{formattedSuggestion.secondaryText}</small>
-      </div>);
+        <strong className="suggestion_text_bold">
+          {formattedSuggestion.mainText}
+        </strong>{" "}
+        <small className="suggestion_text_muted">
+          {formattedSuggestion.secondaryText}
+        </small>
+      </div>
+    );
+
+    // const inputProps = {
+    //   ref: input => {
+    //     this.addressInput = input;
+    //   },
+    //   type: "text",
+    //   value: this.state.address,
+    //   onChange: this.onChange,
+    //   autoFocus: true,
+    //   placeholder: "Search your address"
+    // };
 
     const inputProps = {
-      ref: (input) => { this.addressInput = input; },
-      type: 'text',
+      ref: input => {
+        this.addressInput = input;
+      },
+      type: "text",
       value: this.state.address,
-      onChange: this.onChange,
+      onChange: this.handleChange,
       autoFocus: true,
-      placeholder: 'Search your address'
+      placeholder: "Search your address",
+      name: "Demo__input",
+      id: "my-input-id"
     };
+
+    if (this.state.error === "ZERO_RESULTS") {
+      errorMessage = "Sorry, we couldn't find that address.";
+    } else if (this.state.error === "ERROR") {
+      errorMessage = "Connection Error.";
+    } else if (this.state.error === "INVALID_REQUEST") {
+      errorMessage = "Please input an address.";
+    } else {
+      errorMessage = "Error";
+    }
 
     return (
       <div className="autosuggest_input_form">
-        <div className={`error-box ${this.state.error ? 'open' : 'closed'}`}>
-          <p className="error-text">
-            {"Sorry, we couldn't find that address."}
-          </p>
+        <div className={`error-box ${this.state.error ? "open" : "closed"}`}>
+          <p className="error-text">{errorMessage}</p>
         </div>
         <div className="input_form">
-          { this.props.isScriptLoaded ?
+          {this.props.isScriptLoaded ? (
             <PlacesAutocomplete
               autocompleteItem={AutocompleteItem}
               classNames={cssClasses}
@@ -84,15 +135,14 @@ class AutoSuggestInput extends Component {
               onEnterKeyDown={address => this.handleSelect(address)}
               clearItemsOnError
             />
-          : <input type="text" /> }
-          { this.state.address &&
-            <button
-              className="clear_button"
-              onClick={e => this.clearInput(e)}
-            >
+          ) : (
+            <input type="text" />
+          )}
+          {this.state.address && (
+            <button className="clear_button" onClick={e => this.clearInput(e)}>
               <i className="fa fa-times fa-2x" aria-hidden="true" />
             </button>
-          }
+          )}
           <button
             className="search_button"
             disabled={!this.state.address || this.state.error}
@@ -108,12 +158,21 @@ class AutoSuggestInput extends Component {
 
 AutoSuggestInput.propTypes = {
   searchAddressFlow: PropTypes.func.isRequired,
-  clearSearchResults: PropTypes.func.isRequired,
+  // clearSearchResults: PropTypes.func.isRequired,
   isScriptLoaded: PropTypes.bool.isRequired
 };
 
-export default connect(
-  ({ initialSearch }) => ({ initialSearch }), {
-    searchAddressFlow,
-    clearSearchResults
-  })(scriptLoader(`https://maps.googleapis.com/maps/api/js?key=${process.env.REACT_APP_GOOGLE_MAPS_KEY}&libraries=places`)(AutoSuggestInput));
+// export default connect(({ initialSearch }) => ({ initialSearch }), {
+//   searchAddressFlow,
+//   clearSearchResults
+// })(
+//   scriptLoader(
+//     `https://maps.googleapis.com/maps/api/js?key=${process.env
+//       .REACT_APP_GOOGLE_MAPS_KEY}&libraries=places`
+//   )(AutoSuggestInput)
+// );
+
+export default scriptLoader(
+  `https://maps.googleapis.com/maps/api/js?key=${process.env
+    .REACT_APP_GOOGLE_MAPS_KEY}&libraries=places`
+)(AutoSuggestInput);
